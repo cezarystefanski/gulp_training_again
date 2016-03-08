@@ -31,13 +31,48 @@ gulp.task('styles', ['clean-styles'], function () {
         .pipe(gulp.dest(config.temp));
 });
 
+gulp.task('clean', function () {
+    var delconfig = [].concat(config.build, config.temp);
+    log('Cleaning: ' + delconfig);
+    return del(delconfig);
+});
+
 gulp.task('clean-styles', function () {
     var files = config.temp + '**/*.css';
     return clean(files);
 });
 
+gulp.task('clean-fonts', function () {
+    var files = config.build + 'fonts/**/*.*';
+    return clean(files);
+});
+
+gulp.task('clean-images', function () {
+    var files = config.build + 'images/**/*.*';
+    return clean(files);
+});
+
 gulp.task('less-watcher', function () {
     gulp.watch([config.less], ['styles']);
+});
+
+gulp.task('default', ['help']);
+
+gulp.task('help', $.taskListing);
+
+gulp.task('fonts', ['clean-fonts'], function () {
+    log('Copying fonts');
+    return gulp
+        .src(config.fonts)
+        .pipe(gulp.dest(config.build + 'fonts'));
+});
+
+gulp.task('images', ['clean-images'], function () {
+    log('Copying and compressing images');
+    return gulp
+        .src(config.images)
+        .pipe($.imagemin({optimizationLevel: 4}))
+        .pipe(gulp.dest(config.build + 'images'));
 });
 
 gulp.task('wiredep', function () {
@@ -74,6 +109,10 @@ gulp.task('serve-dev', ['inject'], function () {
         .on('restart', ['vet'], function (ev) {
             log('*** nodemon restarted');
             log('files changed on restart:\n' + ev);
+            setTimeout(function () {
+                browserSync.notify('browsersync reloading...');
+                browserSync.reload({stream: false});
+            }, config.browserReloadDelay);
         })
         .on('start', function () {
             log('*** nodemon started');
@@ -89,17 +128,32 @@ gulp.task('serve-dev', ['inject'], function () {
 
 //////////////
 
+function changeEvent(event) {
+    var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');
+    log('File ' + event.path.replace(srcPattern, '') + ' ' + event.type);
+}
+
 function startBrowserSync() {
-    if (browserSync.active) {
+    if (args.nosync || browserSync.active) {
         return;
     }
 
     log('Starting browser-sync on port' + port);
 
+    gulp
+        .watch([config.less], ['styles'])
+        .on('change', function (event) {
+            changeEvent(event);
+        });
+
     var options = {
         proxy: 'localhost:' + port,
         port: 3000,
-        files: [config.client + '**/*.*'],
+        files: [
+            config.client + '**/*.*',
+            '!' + config.less,
+            config.temp + '**/*.css'
+        ],
         ghostNode: {
             clicks: true,
             location: false,
